@@ -42,7 +42,10 @@ struct ContentView: View {
                                 let info = String(format: "Size: %.2f MB", sizeMB)
                                 let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
                                 try? data.write(to: tempURL)
-                                let newPlayer = AVPlayer(url: tempURL)
+                                
+                                let asset = AVAsset(url: tempURL)
+                                let item = makePixelatedPlayerItem(for: asset)
+                                let newPlayer = AVPlayer(playerItem: item)
                                 newPlayer.play()
                                 await MainActor.run {
                                     videoInfo = info
@@ -67,6 +70,23 @@ struct ContentView: View {
     
     private func openVideo() {
         isPickingVideo = true
+    }
+    
+    private func makePixelatedPlayerItem(for asset: AVAsset, scale: Float = 24) -> AVPlayerItem {
+        let item = AVPlayerItem(asset: asset)
+        let composition = AVVideoComposition(asset: asset) { request in
+            let source = request.sourceImage.clampedToExtent()
+            guard let filter = CIFilter(name: "CIPixellate") else {
+                request.finish(with: request.sourceImage, context: nil)
+                return
+            }
+            filter.setValue(source, forKey: kCIInputImageKey)
+            filter.setValue(scale, forKey: kCIInputScaleKey)
+            let output = filter.outputImage!.cropped(to: request.sourceImage.extent)
+            request.finish(with: output, context: nil)
+        }
+        item.videoComposition = composition
+        return item
     }
 }
 
