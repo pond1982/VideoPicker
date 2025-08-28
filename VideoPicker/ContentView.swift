@@ -6,16 +6,67 @@
 //
 
 import SwiftUI
+import PhotosUI
+import AVKit
+import AVFoundation
 
 struct ContentView: View {
+    @State private var selectedVideo: PhotosPickerItem? = nil
+    @State private var isPickingVideo = false
+    @State private var videoInfo: String? = nil
+    @State private var videoURL: URL? = nil
+    @State private var player: AVPlayer? = nil
+    
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                if let player {
+                    VideoPlayer(player: player)
+                        .frame(width: geometry.size.width, height: geometry.size.width * 9 / 16)
+                        .cornerRadius(0)
+                }
+                Spacer(minLength: 24)
+                Button("Open Video") {
+                    openVideo()
+                }
+                .font(.title)
+                .photosPicker(isPresented: $isPickingVideo, selection: $selectedVideo, matching: .videos)
+                .onChange(of: selectedVideo) { item in
+                    if let item {
+                        Task {
+                            if let data = try? await item.loadTransferable(type: Data.self) {
+                                try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [])
+                                try? AVAudioSession.sharedInstance().setActive(true)
+                                
+                                let sizeMB = Double(data.count) / 1_048_576.0
+                                let info = String(format: "Size: %.2f MB", sizeMB)
+                                let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
+                                try? data.write(to: tempURL)
+                                let newPlayer = AVPlayer(url: tempURL)
+                                newPlayer.play()
+                                await MainActor.run {
+                                    videoInfo = info
+                                    videoURL = tempURL
+                                    player = newPlayer
+                                }
+                            }
+                        }
+                    }
+                }
+                if let videoInfo {
+                    Text(videoInfo)
+                        .font(.body)
+                        .multilineTextAlignment(.center)
+                        .padding()
+                }
+                Spacer()
+            }
+            .padding()
         }
-        .padding()
+    }
+    
+    private func openVideo() {
+        isPickingVideo = true
     }
 }
 
